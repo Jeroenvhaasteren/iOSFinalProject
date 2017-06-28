@@ -7,17 +7,73 @@
 //
 
 import UIKit
+import FirebaseAnalytics
+import FirebaseMessaging
+import FirebaseAuth
+import FirebaseDatabase
+import UserNotifications
+
+import FBSDKCoreKit
+
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
 
     var window: UIWindow?
-
+    var db: DatabaseReference!
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplicationLaunchOptionsKey: Any]?) -> Bool {
+        
+        FBSDKApplicationDelegate.sharedInstance().application(application, didFinishLaunchingWithOptions: launchOptions)
+        
         // Override point for customization after application launch.
+            FirebaseApp.configure()
+            setupNotifications(application: application)
         return true
     }
+    
+    func application(_ application: UIApplication, open url: URL, sourceApplication: String?, annotation: Any) -> Bool {
+        let isHandled = FBSDKApplicationDelegate.sharedInstance().application(application, open: url, sourceApplication: sourceApplication, annotation: annotation)
+        return isHandled
+    }
+    
+    func setupNotifications(application: UIApplication) {
+        let authOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
+        UNUserNotificationCenter.current().requestAuthorization(options: authOptions) {
+            (isAuthorized, error) in
+            print("isAutorized!")
+        }
+        let token = Messaging.messaging().fcmToken
+        print("FCM token: \(token ?? "")")
+        Messaging.messaging().delegate = self
+        application.registerForRemoteNotifications()
+        updateToken()
+    }
+    
+    func connectToMessaging() {
+        Messaging.messaging().shouldEstablishDirectChannel = true
+    }
+    
+    func updateToken() {
+        db = Database.database().reference()
+        if let fcmToken = Messaging.messaging().fcmToken {
+            if let currentUser = Auth.auth().currentUser {
+                let installationInfo = ["token": fcmToken, "uid": currentUser.uid]
+                self.db.child("installations").child(fcmToken).setValue(installationInfo)
+            }
+        }
+    }
+    
+    //Start messaging Deligate func
+    func messaging(_ messaging: Messaging, didRefreshRegistrationToken fcmToken: String) {
+        print("token: " + fcmToken)
+        connectToMessaging()
+    }
+    
+    func messaging(_ messaging: Messaging, didReceive remoteMessage: MessagingRemoteMessage) {
+        print("Got a message!")
+    }
+    //End Messaging App Deligate
 
     func applicationWillResignActive(_ application: UIApplication) {
         // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
@@ -35,6 +91,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        updateToken()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
